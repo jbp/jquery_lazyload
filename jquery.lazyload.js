@@ -19,15 +19,21 @@
         var elements = this;
         var $container;
         var settings = {
-            threshold       : 0,
-            failure_limit   : 0,
-            event           : "scroll",
-            effect          : "show",
-            container       : window,
-            data_attribute  : "original",
-            skip_invisible  : true,
-            appear          : null,
-            load            : null
+            threshold             : 0,
+            failure_limit         : 0,
+            event                 : "scroll",
+            effect                : "show",
+            container             : window,
+            data_attribute        : "original",
+            placeholder_attribute : "placeholder",
+            skip_invisible        : true,
+            appear                : null,
+            load                  : null,
+            disappearing          : false,
+            disappear             : null,
+            unload                : null,
+            loaded_class          : "lazyloaded",
+            disappeared_class     : "disappeared"
         };
 
         function update() {
@@ -40,7 +46,7 @@
                 }
                 if ($.abovethetop(this, settings) ||
                     $.leftofbegin(this, settings)) {
-                        /* Nothing. */
+                        if (settings.disappearing) { $this.trigger("disappear"); }
                 } else if (!$.belowthefold(this, settings) &&
                     !$.rightoffold(this, settings)) {
                         $this.trigger("appear");
@@ -51,6 +57,73 @@
                 }
             });
 
+        }
+
+        function appearFunction() {
+            var self = this;
+            var $self = $(self);
+            if (!this.loaded && !$self.hasClass(settings.loaded_class)) {
+                if (settings.appear) {
+                    var elements_left = elements.length;
+                    settings.appear.call(self, elements_left, settings);
+                }
+                $("<img />")
+                    .bind("load", function() {
+                        $self
+                            .hide()
+                            .data(settings.placeholder_attribute, $self.attr("src"))
+                            .attr("src", $self.data(settings.data_attribute))
+                            .addClass(settings.loaded_class)
+                            [settings.effect](settings.effect_speed);
+                        if(settings.disappearing) {
+                            $self
+                                .removeClass(settings.disappeared_class)
+                                .bind("appear", appearFunction)
+                                .bind("disappear", disappearFunction)
+                        }
+                        self.loaded = true;
+
+                        /* Remove image from array so it is not looped next time. */
+                        var temp = $.grep(elements, function(element) {
+                            return !element.loaded;
+                        });
+                        elements = $(temp); 
+
+                        if (settings.load) {
+                            var elements_left = elements.length;
+                            settings.load.call(self, elements_left, settings);
+                        }
+                    })
+                    .attr("src", $self.data(settings.data_attribute));
+            }
+        }
+        function disappearFunction() {
+            var self = this;
+            var $self = $(self);
+            if (!$self.hasClass(settings.disappeared_class)) {
+                if (settings.disappear) {
+                    var elements_left = elements.length;
+                    settings.disappear.call(self, elements_left, settings);
+                }
+                $self
+                    .hide()
+                    .data(settings.data_attribute, $self.attr("src"))
+                    .attr("src", $self.data(settings.placeholder_attribute))
+                    .removeClass(settings.loaded_class)
+                    [settings.effect](settings.effect_speed);
+                if(settings.disappearing) {
+                    $self
+                        .bind("disappear", disappearFunction)
+                        .bind("appear", appearFunction)
+                        .addClass(settings.disappeared_class)
+                }
+                $self.loaded = false;
+
+                if (settings.unload) {
+                    var elements_left = elements.length;
+                    settings.unload.call(self, elements_left, settings);
+                }
+            }
         }
 
         if(options) {
@@ -85,34 +158,11 @@
             self.loaded = false;
 
             /* When appear is triggered load original image. */
-            $self.one("appear", function() {
-                if (!this.loaded) {
-                    if (settings.appear) {
-                        var elements_left = elements.length;
-                        settings.appear.call(self, elements_left, settings);
-                    }
-                    $("<img />")
-                        .bind("load", function() {
-                            $self
-                                .hide()
-                                .attr("src", $self.data(settings.data_attribute))
-                                [settings.effect](settings.effect_speed);
-                            self.loaded = true;
+            $self.bind("appear", appearFunction );
 
-                            /* Remove image from array so it is not looped next time. */
-                            var temp = $.grep(elements, function(element) {
-                                return !element.loaded;
-                            });
-                            elements = $(temp);
-
-                            if (settings.load) {
-                                var elements_left = elements.length;
-                                settings.load.call(self, elements_left, settings);
-                            }
-                        })
-                        .attr("src", $self.data(settings.data_attribute));
-                }
-            });
+            if(settings.disappearing) {
+                $self.bind("disappear", disappearFunction);
+            }
 
             /* When wanted event is triggered load original image */
             /* by triggering appear.                              */
